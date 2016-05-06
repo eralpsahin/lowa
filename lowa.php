@@ -18,11 +18,11 @@ register_activation_hook( __FILE__, 'lowa_db' );
 function lowa_db() 
 {
   global $wpdb;
-  $menuTable = $wpdb->prefix.'lowa_menu';
-  $ingredientTable = $wpdb->prefix.'lowa_ingredient';
-  $containTable = $wpdb->prefix.'lowa_contain';
-  $tableTable = $wpdb->prefix.'lowa_table';
-  $groupTable = $wpdb->prefix.'lowa_group';
+  $menuTable = $wpdb->prefix.'lowa_menu'; //adding menus
+  $ingredientTable = $wpdb->prefix.'lowa_ingredient'; 
+  $containTable = $wpdb->prefix.'lowa_contain'; //adding ingredients to menus
+  $tableTable = $wpdb->prefix.'lowa_table'; 
+  $groupTable = $wpdb->prefix.'lowa_group'; 
   $orderTable = $wpdb->prefix.'lowa_order';
   $charset_collate = $wpdb->get_charset_collate();
   
@@ -124,7 +124,7 @@ function lowa_addmenu()
 	if(is_user_logged_in())
 	{
 		
-		echo '<form id="add-menu-form" method="post" action="lowa.php"';
+		echo '<form id="add-menu-form" method="post" action="lowa.php">';
 	   	echo 'Input format examples are given in input placeholder<br>';
 	    echo 'Menu Id:*<br>';
  		 echo '<input type="text" id="menu_id" placeholder="C1 or NB3 or Y2" required><br>';
@@ -143,18 +143,146 @@ function lowa_addmenu()
 function lowa_insertmenu()
 {
 	if ( isset( $_POST['menu_id'] ) && isset( $_POST['menu_price'] ) && isset( $_POST['menu_name'] ) && isset( $_POST['menu_stock'] ) && wp_verify_nonce($_POST['lowa_nonce'], 'lowa-nonce') )
-  {
-	global $wpdb; //required global declaration of WP variable
-  	$menuTable = $wpdb->prefix.'lowa_menu';
+  	{
+  		$menu_id =$_POST['menu_id'];
+  		$menu_price =$_POST['menu_price'];
+  		$menu_name = $_POST['menu_name'];
+  		$menu_stock = $_POST['menu_stock'];
 
+		global $wpdb; //required global declaration of WP variable
+	  	$menuTable = $wpdb->prefix.'lowa_menu';
 
-  	echo 'finished';
-  }
-  else
-  {
-    echo 'not entered';
-  }
+	  	if($wpdb->insert( 
+						$menuTable, 
+						array( 
+							'm_price' => $menu_price, 
+							'm_id' => $menu_id,
+							'm_stock' => $menu_stock,
+							'm_name' => $menu_name
+						)))
+	  	echo 'finished';
+	  else
+	  	echo 'failed insertion';
+ 	 }
+	else
+	{
+		echo 'not entered';
+	}
   	die();
+}
+
+function lowa_addIngredient()
+{
+	ob_start();
+	if(is_user_logged_in())
+	{
+		global $wpdb;
+		$menuTable = $wpdb->prefix.'lowa_menu';
+		$ingredientTable = $wpdb->prefix.'lowa_ingredient';
+		$menus = $wpdb->get_results("
+				SELECT m_id,m_name
+				FROM $menuTable
+				");
+		$ingredients = $wpdb->get_results("
+
+				SELECT i_name
+				FROM $ingredientTable
+				");
+		echo count($menus).'<br>';
+		echo count($ingredients);
+		echo '<form id="add-ingredient-form" method="post" action="lowa.php">';
+		echo' Choose Menu to add Ingredient:<br>';
+		echo '<select id="menulist" form="add-ingredient-form" required>';
+		foreach ($menus as $menu)
+	    {
+	      echo '<option value="'.$menu->m_id.'">'.$menu->m_name.'</option>';
+	    }
+	    echo '</select>';
+	   	echo '</br></br>';
+	   	echo' Choose Ingredient to add:<br>';
+		echo '<select id="ingredientlist" form="add-ingredient-form" required>';
+		foreach ($ingredients as $ingredient)
+	    {
+	      echo '<option value="'.$ingredient->i_name.'">'.$ingredient->i_name.'</option>';
+	    }
+	    echo '</select>';
+	   	echo '</br></br>';
+	    echo '<input type="submit" value="Add Ingredient to Menu">';
+		echo '</form>';
+	}
+	return ob_get_clean();
+}
+
+function lowa_insertIngredient()
+{
+	if ( isset( $_POST['menu_id'] ) && isset( $_POST['i_name'] ) && wp_verify_nonce($_POST['lowa_nonce'], 'lowa-nonce') )
+  	{
+  		$m_id = $_POST['menu_id'];
+  		$i_name = $_POST['i_name'];
+  		global $wpdb; //required global declaration of WP variable
+	  	$containTable = $wpdb->prefix.'lowa_contain';
+	  	$wpdb->insert( 
+						$containTable, 
+						array( 
+							'm_id' => $m_id,
+							'i_name' => $i_name
+						));
+  		echo 'finished';
+  	}
+  	die();
+}
+
+function lowa_addGroup()
+{
+	ob_start();
+  if(is_user_logged_in())
+  {
+    echo'<form id="add-group-form" method="post" action="action_page.php">
+  Enter number of people for the group:<br>
+  <input type="number" id="num_people" min="1" max ="10" value="2" required><br><br>
+  <input type="hidden" id="t_id">
+  <input type="hidden" id="n_people">
+  <input type="submit" id="btn" value="Find corresponding table">
+</form>';
+    
+  }
+  return ob_get_clean();
+}
+function lowa_findTable()
+{
+  if ( isset( $_POST['num_people'] )  && wp_verify_nonce($_POST['lowa_nonce'], 'lowa-nonce'))
+  {
+    global $wpdb; //required global declaration of WP variable
+    $num_people = $_POST['num_people'];
+    $tableTable = $wpdb->prefix.'lowa_table'; 
+    $groupTable = $wpdb->prefix.'lowa_group'; 
+    $t_id = $wpdb->get_var("
+      SELECT R.t_id
+      FROM (SELECT T.t_id, (T.t_capacity - G.g_people) AS remaining
+      FROM $tableTable T, $groupTable G
+      WHERE G.t_id = T.t_id
+      UNION
+      SELECT T.t_id, T.t_capacity AS remaining
+      FROM $tableTable T
+      WHERE T.t_id NOT IN(SELECT t_id FROM $groupTable)) as R
+      WHERE remaining >= $num_people
+      ORDER BY R.remaining
+      LIMIT 1");
+    echo $t_id;
+  }
+  die();
+}
+
+function lowa_insertGroup()
+{
+  if ( isset( $_POST['num_people'] )  && isset( $_POST['t_id'] ) && wp_verify_nonce($_POST['lowa_nonce'], 'lowa-nonce'))
+  {
+    global $wpdb;
+    $groupTable = $wpdb->prefix.'lowa_group';
+
+    echo 'finished';
+  }
+  die();
 }
 
 function lowa_scripts() {
@@ -163,6 +291,12 @@ function lowa_scripts() {
        array('ajaxurl' => admin_url('admin-ajax.php'),'nonce' => wp_create_nonce('lowa-nonce')) );
 }
 add_shortcode( 'Lowa-Add-Menu', 'lowa_addmenu' );
+add_shortcode( 'Lowa-Add-Group', 'lowa_addGroup' );
+add_shortcode( 'Lowa-Add-Ingredient', 'lowa_addIngredient' );
 add_action('wp_enqueue_scripts', 'lowa_scripts');
 add_action('wp_ajax_add_menu', 'lowa_insertmenu');
+add_action('wp_ajax_find_table', 'lowa_findTable');
+add_action('wp_ajax_add_ingredient', 'lowa_insertIngredient');
+add_action('wp_ajax_insert_group', 'lowa_insertGroup');
+
 ?>
