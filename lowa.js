@@ -1,4 +1,5 @@
 jQuery(document).ready(function($){
+	 $("#qu").hide();
 	$('#add-menu-form').submit(function(e){
 		e.preventDefault();
 		alert("caught the click");
@@ -29,9 +30,9 @@ jQuery(document).ready(function($){
 	});
 	$('#add-ingredient-form').submit(function(e){
 		e.preventDefault();
-		alert("caught the click from ingredient");
 		var menu = document.getElementById("menulist").value;
 		var ingredient = document.getElementById("ingredientlist").value;
+		alert(ingredient);
 		var post_data = {
 			 	action:'add_ingredient',
 			 	menu_id: menu,
@@ -84,4 +85,50 @@ jQuery(document).ready(function($){
 			});
 		}
 	});
+	$('#find-menu-form').submit(function(e){
+		e.preventDefault();
+		var ingredient = document.getElementById("ingredientlist").value;
+		alert(ingredient);
+		var post_data = {
+			 	action:'find_menu',
+				ingredient: ingredient,
+			 	lowa_nonce: lowadata.nonce
+			};
+		$.post(lowadata.ajaxurl,post_data,function(response){
+			if(response == '') {
+					alert("No menu with this ingredient");
+			 	}else {
+					alert(response);
+				}
+		});
+	});
+	$('#add-order-form').submit(function(e){
+		e.preventDefault();
+		var quantity = document.getElementById('quantity').value;
+		var menu_id = document.querySelector('input[name="menuid"]:checked').value;
+		var group_id = document.querySelector('input[name="groupID"]:checked').value;
+		var post_data = {
+			 	action:'place_order',
+				menu_id: menu_id,
+				quantity: quantity,
+				group_id: group_id,
+			 	lowa_nonce: lowadata.nonce
+			};
+		$.post(lowadata.ajaxurl,post_data,function(response){
+			if(response == 'finished') {
+					alert("There is no way this alert message would occur");
+			 	}else {
+					alert(response);
+					window.location.reload(true);
+				}
+		});
+	});
+	$('.menuID').click(function(){
+		//alert('clicked');
+		$('#qu').hide();
+		var remaining =  $(this).data('val');
+		$('#quantity').attr('max',remaining);
+		$('#qu').show();
+	});
+	
 });
