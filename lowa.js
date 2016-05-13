@@ -78,9 +78,10 @@ jQuery(document).ready(function($){
 			};
 			$.post(lowadata.ajaxurl,post_data,function(response){
 				if(response == 'finished') {
-					alert("Yiihaaa");
+					alert("Group is seated");
+					window.location.reload(true);
 			 	}else {
-					alert('Entered ingredient already exists for the menu!');
+					alert('There was an error while seating the group!');
 				}
 			});
 		}
@@ -130,5 +131,22 @@ jQuery(document).ready(function($){
 		$('#quantity').attr('max',remaining);
 		$('#qu').show();
 	});
-	
+	$('#close-account-form').submit(function(e){
+		e.preventDefault();
+		var group_id = document.querySelector('input[name="groupID"]:checked').value;
+		alert(group_id);
+		var post_data = {
+			 	action:'finish_account',
+				group_id: group_id,
+			 	lowa_nonce: lowadata.nonce
+			};
+		$.post(lowadata.ajaxurl,post_data,function(response){
+			if(response == 'finished') {
+					alert("");
+			 	}else {
+			 		alert(response);
+					window.location.reload(true);
+				}
+		});
+	});
 });

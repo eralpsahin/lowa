@@ -105,24 +105,28 @@ register_uninstall_hook( __FILE__, 'lowa_uninstall' );
 function lowa_uninstall()
 {
   global $wpdb; //required global declaration of WP variable
- /* $menuTable = $wpdb->prefix.'lowa_menu';
+  $menuTable = $wpdb->prefix.'lowa_menu';
   $ingredientTable = $wpdb->prefix.'lowa_ingredient';
   $containTable = $wpdb->prefix.'lowa_contain';
   $tableTable = $wpdb->prefix.'lowa_table';
   $groupTable = $wpdb->prefix.'lowa_group';
   $orderTable = $wpdb->prefix.'lowa_order';
-  $sql = "DROP TABLE ". $menuTable;
+  $revenueTable = $wpdb->prefix.'lowa_revenue';
+  $sql = "DROP TABLE  $menuTable";
   $wpdb->query($sql);
-  $sql = "DROP TABLE ". $ingredientTable;
+  $sql = "DROP TABLE  $ingredientTable";
   $wpdb->query($sql);
-  $sql = "DROP TABLE ". $containTable;
+  $sql = "DROP TABLE $containTable";
   $wpdb->query($sql);
-  $sql = "DROP TABLE ". $tableTable;
+  $sql = "DROP TABLE  $tableTable";
   $wpdb->query($sql);
-  $sql = "DROP TABLE ". $groupTable;
+  $sql = "DROP TABLE  $groupTable";
   $wpdb->query($sql);
-  $sql = "DROP TABLE ". $orderTable;
-  $wpdb->query($sql);*/
+  $sql = "DROP TABLE  $orderTable";
+  $wpdb->query($sql);
+  $sql = "DROP TABLE $revenueTable";
+  $wpdb->query($sql);
+
 }
 
 
@@ -294,16 +298,11 @@ function lowa_findTable()
     $tableTable = $wpdb->prefix.'lowa_table'; 
     $groupTable = $wpdb->prefix.'lowa_group'; 
     $t_id = $wpdb->get_var("
-      SELECT R.t_id
-      FROM (SELECT T.t_id, (T.t_capacity - G.g_people) AS remaining
-      FROM $tableTable T, $groupTable G
-      WHERE G.t_id = T.t_id
-      UNION
-      SELECT T.t_id, T.t_capacity AS remaining
+      SELECT T.t_id
       FROM $tableTable T
-      WHERE T.t_id NOT IN(SELECT t_id FROM $groupTable)) as R
-      WHERE remaining >= $num_people
-      ORDER BY R.remaining
+      WHERE T.t_capacity>=$num_people AND T.t_id NOT IN 
+      (SELECT G.t_id FROM $groupTable G)
+      ORDER BY T.t_capacity ASC
       LIMIT 1");
     echo $t_id;
   }
@@ -432,7 +431,7 @@ function lowa_statistics(){
     $tableTable = $wpdb->prefix.'lowa_table'; 
     $groupTable = $wpdb->prefix.'lowa_group'; 
     $orderTable = $wpdb->prefix.'lowa_order';
-
+    $revenueTable = $wpdb->prefix.'lowa_revenue';
     echo 'Remaining empty seats currently for the tables:<br/>';
     $tables=$wpdb->get_results("
               SELECT T.t_id, (T.t_capacity - G.g_people) AS remaining
@@ -460,27 +459,42 @@ function lowa_statistics(){
     }
     echo '</table><br/>';
 
-    $totalfree = $wpdb->get_var("
-      SELECT SUM(R.remaining) AS r_total
-      FROM (SELECT T.t_id, (T.t_capacity - G.g_people) AS remaining
-      FROM $tableTable T, $groupTable G
-      WHERE G.t_id = T.t_id
-      UNION
-      SELECT T.t_id, T.t_capacity AS remaining
+    $totalfrees = $wpdb->get_results("
+      SELECT T.t_id, T.t_capacity - 
+      ( 
+      SELECT SUM( g_people ) 
+      FROM $groupTable G
+      WHERE G.t_id = T.t_id ) AS remaining
       FROM $tableTable T
-      WHERE T.t_id NOT IN(SELECT t_id FROM $groupTable)) as R
       ");
-    echo'Currently total of '.$totalfree.' remaining seats.<br/><br/>';
+   
+    $totalfreeseats=0;
+    foreach($totalfrees as $totalfree)
+    {
+      if($totalfree->remaining!=NULL)
+      $totalfreeseats+=$totalfree->remaining;
+      else{
+        $count=$wpdb->get_var("SELECT t_capacity FROM $tableTable WHERE t_id=$totalfree->t_id");
+        $totalfreeseats+=$count;
+      }
+    }
+    
+      echo'Currently total of '.$totalfreeseats.' remaining seat(s).<br/><br/>';
+    
 
     $totalseated = $wpdb->get_var("
       SELECT SUM(g_people) AS total
       FROM $groupTable
       ");
-     echo'Currently total of '.$totalseated.' customer is in the restaurant.<br/><br/>';
+     echo'Currently total of '.$totalseated.' customer(s) is in the restaurant.<br/><br/>';
 
      $totalmenu = $wpdb->get_var("SELECT COUNT(*) FROM $menuTable");
 
      echo 'There are '.$totalmenu.' menu(s) in the menu list<br/><br/>';
+
+     $revenue=$wpdb->get_var("SELECT revenue FROM $revenueTable WHERE rest=1");
+
+     echo 'Total revenue of the Restaurant is '.$revenue.'<br/><br/>';
   }
 
   return ob_get_clean();
@@ -533,9 +547,53 @@ function lowa_menuList(){
 
   return ob_get_clean();
 }
+function lowa_finishAccount()
+{
+  ob_start();
+  if(is_user_logged_in())
+  {
+    global $wpdb;
+    $menuTable = $wpdb->prefix.'lowa_menu'; //adding menus
+    $orderby = isset($_POST['orderby']) ? $_POST['orderby'] : 'm_name' ;
+    $groupTable = $wpdb->prefix.'lowa_group'; 
+    $groups =$wpdb->get_results("
+        SELECT *
+        FROM $groupTable
+        ");
+    echo '<form id="close-account-form" method="post" action="action_page.php">';
+    echo 'Add order to group number :<br/>';
+    foreach ($groups as $group)
+    {
+      if($group->g_bill==0)
+          echo '<input type="radio" name="groupID" disabled value="'.$group->g_id.'" required> Group with id: '.$group->g_id.', current bill is: '.$group->g_bill.'<br/>';
+        
+      else
+          echo '<input type="radio" name="groupID" value="'.$group->g_id.'" required> Group with id: '.$group->g_id.', current bill is: '.$group->g_bill.'<br/>';
+    }
+    echo'<input type="submit" value="Close Account"></form>';
+    
+  }
+
+  return ob_get_clean();
+}
+function lowa_finish_accont()
+{
+  if (isset( $_POST['group_id'] ) && wp_verify_nonce($_POST['lowa_nonce'], 'lowa-nonce'))
+  {
+    global $wpdb;
+    $revenueTable = $wpdb->prefix.'lowa_revenue';
+    $groupTable = $wpdb->prefix.'lowa_group'; 
+    $group_id = $_POST['group_id'];
+    $g_bill = $wpdb->get_var("SELECT g_bill FROM $groupTable WHERE g_id = $group_id");
+    $wpdb->query("UPDATE $revenueTable SET revenue=revenue+$g_bill");
+    $wpdb->query("DELETE FROM $groupTable WHERE g_id = $group_id");
+    echo 'Group '.$group_id.' left the restaurant '.$g_bill.' added to the Restaurants revenue';
+  }
+  die();
+}
 
 function lowa_scripts() {
-    wp_enqueue_script('lowa-script', plugins_url() . '/lowa-plugin/lowa.js', array( 'jquery' ), '2.0'); 
+    wp_enqueue_script('lowa-script', plugins_url() . '/lowa-plugin/lowa.js', array( 'jquery' ), '1.0'); 
 
      wp_localize_script( 'lowa-script', 'lowadata', 
        array('ajaxurl' => admin_url('admin-ajax.php'),'nonce' => wp_create_nonce('lowa-nonce')) );
@@ -552,6 +610,8 @@ add_shortcode('Lowa-Statistics','lowa_statistics');
 
 add_shortcode('Lowa-Menu','lowa_menuList');
 
+add_shortcode('Lowa-Have-Check','lowa_finishAccount');
+
 add_shortcode( 'Lowa-Add-Order', 'lowa_addOrder');
 
 add_action('wp_enqueue_scripts', 'lowa_scripts');
@@ -563,6 +623,8 @@ add_action('wp_ajax_place_order', 'lowa_placeOrder');
 add_action('wp_ajax_find_table', 'lowa_findTable');
 
 add_action('wp_ajax_find_menu', 'lowa_findMenu');
+
+add_action('wp_ajax_finish_account','lowa_finish_accont');
 
 add_action('wp_ajax_add_ingredient', 'lowa_insertIngredient');
 
